@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="bs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Evidencija računa – 30 dana</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{--bg:#f5f6f8;--surface:#fff;--text:#1d2330;--muted:#6b7280;--line:#e3e6ec;--accent:#2d6cdf;--danger:#c93434;--ok:#1f8a4c;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171d;--surface:#1c2028;--text:#e8ebf1;--muted:#9aa3b2;--line:#2c323d;--accent:#6a9cff;--danger:#ff7a7a;--ok:#5fd18f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14171d;--surface:#1c2028;--text:#e8ebf1;--muted:#9aa3b2;--line:#2c323d;--accent:#6a9cff;--danger:#ff7a7a;--ok:#5fd18f;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top,0px) 16px env(safe-area-inset-bottom,0px)}
+main{max-width:980px;margin:0 auto;padding:20px 0 40px}
+h1{font-size:1.5rem;margin:8px 0 4px}
+h2{font-size:1.1rem;margin:0 0 12px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:.95rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.stat .v{font-size:1.4rem;font-weight:600}
+.stat .l{color:var(--muted);font-size:.85rem}
+button{font:inherit;border:0;border-radius:8px;padding:9px 14px;background:var(--accent);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+button.danger{background:transparent;color:var(--danger);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:default}
+input[type=text],input[type=date],input[type=number]{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--text);width:100%}
+input[type=file]{font:inherit;max-width:100%}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{color:var(--muted);font-weight:500;font-size:.82rem}
+td.n,th.n{text-align:right;white-space:nowrap}
+.edit td{padding:4px 3px}
+.edit input{padding:6px 7px}
+.status{color:var(--muted);font-size:.9rem;min-height:1.2em;margin-top:8px}
+.warn{color:var(--danger)}
+.ok{color:var(--ok)}
+.pill{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:.8rem;color:var(--muted)}
+.preview{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);margin-top:10px}
+.fileinp{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Evidencija računa</h1>
+  <p class="sub">Uslikaj ili učitaj račun (slika ili PDF). Aplikacija očita stavke, a ti ih po potrebi ispraviš prije spremanja. Pregled prikazuje zbir za zadnjih 30 dana.</p>
+
+  <div class="status" id="storeInfo"></div>
+  <section class="grid" id="stats"></section>
+
+  <section class="card" id="uploadCard">
+    <h2>Novi račun</h2>
+    <div class="row">
+      <button class="ghost" id="btnCam">📷 Uslikaj račun</button>
+      <button class="ghost" id="btnPick">📁 Odaberi sliku ili PDF</button>
+      <input type="file" id="cam" accept="image/*" capture="environment" class="fileinp">
+      <input type="file" id="file" accept="image/*,application/pdf" class="fileinp">
+      <button id="btnProcess" disabled>Očitaj račun</button>
+    </div>
+    <div class="status" id="status"></div>
+    <img id="preview" class="preview" alt="" hidden>
+    <div id="review" hidden style="margin-top:14px">
+      <div class="row" style="margin-bottom:12px">
+        <div style="flex:1;min-width:160px"><label class="sub">Datum računa</label><input type="date" id="rDate"></div>
+        <div style="flex:2;min-width:200px"><label class="sub">Prodavnica</label><input type="text" id="rShop" placeholder="npr. Konzum"></div>
+      </div>
+      <div class="table-wrap">
+        <table class="edit">
+          <thead><tr><th>Artikal</th><th class="n" style="width:90px">Količina</th><th class="n" style="width:110px">Cijena (jed.)</th><th class="n" style="width:110px">Iznos</th><th style="width:40px"></th></tr></thead>
+          <tbody id="items"></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:12px;justify-content:space-between">
+        <button class="ghost" id="btnAddItem">+ Dodaj stavku</button>
+        <div><strong>Ukupno: <span id="rTotal">0,00</span> KM</strong></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button id="btnSave">Spremi račun</button>
+        <button class="ghost" id="btnDiscard">Odbaci</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <h2 style="margin:0">Zbir artikala – zadnjih 30 dana</h2>
+      <span class="pill" id="period"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Artikal</th><th class="n">Ukupna količina</th><th class="n">Prosj. cijena</th><th class="n">Ukupna vrijednost (KM)</th></tr></thead>
+        <tbody id="summary"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <h2 style="margin:0">Računi u periodu</h2>
+      <button class="danger" id="btnClearOld">Obriši račune starije od 30 dana</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Datum</th><th>Prodavnica</th><th class="n">Stavki</th><th class="n">Iznos (KM)</th><th></th></tr></thead>
+        <tbody id="receiptList"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const KEY = 'racuni_30dana_v1';
+const DAYS = 30;
+const DAY = 864e5;
+
+let receipts = loadReceipts();
+let pending = null;      // račun koji se trenutno pregledava
+let pendingBlob = null;  // slika računa za pregled
+let sample = null;       // Claude sample capability
+
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+/* ---------- storage ---------- */
+let storageOk = true;
+function loadReceipts() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (e) { storageOk = false; return []; }
+}
+function saveReceipts() {
+  try { localStorage.setItem(KEY, JSON.stringify(receipts)); storageOk = true; }
+  catch (e) { storageOk = false; }
+  renderStoreInfo();
+}
+function renderStoreInfo() {
+  $('storeInfo').className = 'status' + (storageOk ? '' : ' warn');
+  $('storeInfo').textContent = storageOk
+    ? 'Ukupno spremljenih računa: ' + receipts.length + ' (računi stariji od 30 dana su prikazani zasivljeno).'
+    : 'Upozorenje: pregledavač ne dozvoljava trajno čuvanje, računi će nestati kad zatvoriš stranicu.';
+}
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function fmt(n) {
+  return (Number(n) || 0).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function fmtQty(n) {
+  return (Number(n) || 0).toLocaleString('de-DE', {maximumFractionDigits: 3});
+}
+function parseNum(v) {
+  let s = String(v ?? '').trim().replace(/\s/g, '');
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+function setStatus(msg, isWarn) {
+  $('status').textContent = msg;
+  $('status').className = 'status' + (isWarn ? ' warn' : '');
+}
+function receiptDate(r) {
+  const d = r.datum ? new Date(r.datum + 'T12:00:00') : NaN;
+  return isNaN(d) ? new Date(r.uploaded) : d;
+}
+function ageDays(r) {
+  return (Date.now() - receiptDate(r).getTime()) / DAY;
+}
+function inWindow(r) {
+  const a = ageDays(r);
+  return a <= DAYS && a >= -1;
+}
+function windowReceipts() {
+  return receipts.filter(inWindow).sort((a, b) => receiptDate(b) - receiptDate(a));
+}
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function normName(s) {
+  return String(s || '').trim().replace(/\s+/g, ' ');
+}
+
+/* ---------- prikaz pregleda ---------- */
+function totalsOf(list) {
+  let items = 0, total = 0;
+  list.forEach(r => { items += r.stavke.length; total += Number(r.ukupno) || 0; });
+  return {racuna: list.length, stavki: items, vrijednost: total};
+}
+function statCards(prefix, t) {
+  return `
+    <div class="stat"><div class="v">${t.racuna}</div><div class="l">${prefix} računa</div></div>
+    <div class="stat"><div class="v">${t.stavki}</div><div class="l">${prefix} stavki</div></div>
+    <div class="stat"><div class="v">${fmt(t.vrijednost)} KM</div><div class="l">${prefix} ukupna vrijednost</div></div>`;
+}
+function renderStats() {
+  const w = totalsOf(windowReceipts());
+  const all = totalsOf(receipts);
+  $('stats').innerHTML = statCards('zadnjih 30 dana:', w) + statCards('svi spremljeni:', all);
+}
+
+function renderSummary() {
+  const w = windowReceipts();
+  const map = new Map();
+  w.forEach(r => r.stavke.forEach(s => {
+    const key = normName(s.naziv).toLowerCase();
+    if (!key) return;
+    const cur = map.get(key) || {naziv: normName(s.naziv), kol: 0, val: 0};
+    cur.kol += Number(s.kolicina) || 0;
+    cur.val += Number(s.iznos) || 0;
+    map.set(key, cur);
+  }));
+  const rows = [...map.values()].sort((a, b) => b.val - a.val);
+  $('summary').innerHTML = rows.length
+    ? rows.map(r => `<tr><td>${esc(r.naziv)}</td><td class="n">${fmtQty(r.kol)}</td><td class="n">${fmt(r.kol ? r.val / r.kol : 0)}</td><td class="n">${fmt(r.val)}</td></tr>`).join('') +
+      `<tr><td><strong>UKUPNO</strong></td><td class="n"><strong>${fmtQty(rows.reduce((s, r) => s + r.kol, 0))}</strong></td><td></td><td class="n"><strong>${fmt(rows.reduce((s, r) => s + r.val, 0))}</strong></td></tr>`
+    : `<tr><td colspan="4" class="sub">Nema evidentiranih stavki u zadnjih 30 dana.</td></tr>`;
+
+  if (w.length) {
+    const oldest = receiptDate(w[w.length - 1]), newest = receiptDate(w[0]);
+    $('period').textContent = 'od ' + oldest.toLocaleDateString('bs-BA') + ' do ' + newest.toLocaleDateString('bs-BA');
+  } else {
+    $('period').textContent = 'nema računa';
+  }
+}
+
+function renderReceipts() {
+  const all = [...receipts].sort((a, b) => receiptDate(b) - receiptDate(a));
+  $('receiptList').innerHTML = all.length ? all.map(r => {
+    const inW = inWindow(r);
+    return `
+    <tr style="${inW ? '' : 'opacity:.55'}">
+      <td>${receiptDate(r).toLocaleDateString('bs-BA')}${inW ? '' : ' <span class="pill">van 30 dana</span>'}</td>
+      <td>${esc(r.prodavac || '—')}</td>
+      <td class="n">${r.stavke.length}</td>
+      <td class="n">${fmt(r.ukupno)}</td>
+      <td class="n"><button class="danger" data-del="${esc(r.id)}">Obriši</button></td>
+    </tr>`;
+  }).join('')
+    : `<tr><td colspan="5" class="sub">Još nema spremljenih računa.</td></tr>`;
+}
+
+function renderAll() {
+  renderStoreInfo();
+  renderStats();
+  renderSummary();
+  renderReceipts();
+}
+
+/* ---------- pregled i uređivanje stavki ---------- */
+function itemRow(s = {naziv: '', kolicina: 1, cijena: 0, iznos: 0}) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" class="f-naziv" value="${esc(s.naziv)}"></td>
+    <td><input type="text" class="f-kol n" value="${fmtQty(s.kolicina)}"></td>
+    <td><input type="text" class="f-cij n" value="${fmt(s.cijena)}"></td>
+    <td><input type="text" class="f-iznos n" value="${fmt(s.iznos)}"></td>
+    <td><button class="danger f-del">×</button></td>`;
+  const kol = tr.querySelector('.f-kol'), cij = tr.querySelector('.f-cij'), iz = tr.querySelector('.f-iznos');
+  const recalcIznos = () => { iz.value = fmt(parseNum(kol.value) * parseNum(cij.value)); updateTotal(); };
+  kol.addEventListener('input', () => { recalcIznos(); });
+  cij.addEventListener('input', () => { recalcIznos(); });
+  iz.addEventListener('input', updateTotal);
+  tr.querySelector('.f-naziv').addEventListener('input', updateTotal);
+  tr.querySelector('.f-del').addEventListener('click', () => { tr.remove(); updateTotal(); });
+  return tr;
+}
+function readItems() {
+  return [...$('items').querySelectorAll('tr')].map(tr => ({
+    naziv: normName(tr.querySelector('.f-naziv').value),
+    kolicina: parseNum(tr.querySelector('.f-kol').value),
+    cijena: parseNum(tr.querySelector('.f-cij').value),
+    iznos: parseNum(tr.querySelector('.f-iznos').value)
+  })).filter(s => s.naziv);
+}
+function updateTotal() {
+  const t = [...$('items').querySelectorAll('.f-iznos')].reduce((s, el) => s + parseNum(el.value), 0);
+  $('rTotal').textContent = fmt(t);
+}
+function showReview(data) {
+  $('review').hidden = false;
+  $('rDate').value = data.datum && /^\d{4}-\d{2}-\d{2}$/.test(data.datum) ? data.datum : todayISO();
+  $('rShop').value = data.prodavac || '';
+  $('items').innerHTML = '';
+  (data.stavke || []).forEach(s => $('items').appendChild(itemRow({
+    naziv: s.naziv, kolicina: Number(s.kolicina) || 1, cijena: Number(s.cijena) || 0, iznos: Number(s.iznos) || (Number(s.kolicina) || 1) * (Number(s.cijena) || 0)
+  })));
+  if (!data.stavke || !data.stavke.length) $('items').appendChild(itemRow());
+  updateTotal();
+}
+function resetReview() {
+  pending = null;
+  pendingBlob = null;
+  $('review').hidden = true;
+  $('preview').hidden = true;
+  $('file').value = '';
+  $('cam').value = '';
+  $('btnProcess').disabled = true;
+}
+
+/* ---------- učitavanje slike / PDF-a ---------- */
+function canvasToBlob(canvas) {
+  return new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92));
+}
+async function fileToImageBlob(file) {
+  if (file.type === 'application/pdf') {
+    if (!window.pdfjsLib) throw new Error('PDF biblioteka nije učitana.');
+    const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
+    const page = await pdf.getPage(1);
+    let vp = page.getViewport({scale: 2});
+    if (vp.width > 2000) vp = page.getViewport({scale: 2000 / page.getViewport({scale: 1}).width});
+    const canvas = document.createElement('canvas');
+    canvas.width = vp.width; canvas.height = vp.height;
+    await page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
+    return canvasToBlob(canvas);
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    try { await img.decode(); } catch (e) { throw new Error('Ovu sliku nije moguće otvoriti. Probaj drugu fotografiju (JPG ili PNG).'); }
+    const k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * k);
+    canvas.height = Math.round(img.naturalHeight * k);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvasToBlob(canvas);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/* ---------- AI očitavanje ---------- */
+const PROMPT = `Na slici je račun (BiH/Hrvatska/Srbija, valuta KM ili KM/BAM). Izvuci stavke i vrati SAMO JSON bez ikakvog teksta prije ili poslije, bez markdown oznaka, u ovom obliku:
+{"datum":"YYYY-MM-DD ili null","prodavac":"naziv prodavnice ili null","stavke":[{"naziv":"naziv artikla kako piše na računu","kolicina":broj,"cijena":broj_jedinične_cijene,"iznos":broj_ukupno_za_stavku}],"ukupno":broj}
+Pravila: brojevi su decimalni brojevi s tačkom (npr. 2.50), bez valute. Ako količina nije navedena, stavi 1. Ne izmišljaj stavke. Ignoriši popuste, PDV-ove redove i zaglavlje, osim ako su jasno dio stavke. Iznos = količina × cijena.`;
+
+async function extractWithClaude(blob) {
+  const raw = await sample(PROMPT, {images: [blob], modelTier: 'default'});
+  const text = (raw && raw.text) || '';
+  const start = text.indexOf('{'), end = text.lastIndexOf('}');
+  if (start < 0 || end < 0) throw new Error('Nije dobijen ispravan odgovor za očitavanje.');
+  return JSON.parse(text.slice(start, end + 1));
+}
+
+/* ---------- događaji ---------- */
+const getFile = () => $('cam').files[0] || $('file').files[0];
+const onPick = () => {
+  const f = getFile();
+  $('btnProcess').disabled = !f;
+  $('review').hidden = true;
+  setStatus(f ? 'Spreman za očitavanje: ' + f.name : '');
+  if (f && f.type.startsWith('image/')) {
+    $('preview').src = URL.createObjectURL(f);
+    $('preview').hidden = false;
+  } else {
+    $('preview').hidden = true;
+  }
+};
+$('file').addEventListener('change', onPick);
+$('cam').addEventListener('change', onPick);
+$('btnCam').addEventListener('click', () => $('cam').click());
+$('btnPick').addEventListener('click', () => $('file').click());
+
+$('btnProcess').addEventListener('click', async () => {
+  const f = getFile();
+  if (!f) return;
+  $('btnProcess').disabled = true;
+  try {
+    setStatus('Pripremam sliku…');
+    pendingBlob = await fileToImageBlob(f);
+    if (!sample) {
+      const claude = window.claude;
+      sample = claude ? await claude.use('sample') : null;
+    }
+    if (!sample) throw new Error('Očitavanje računa nije dostupno u ovom pregledu. Pokušaj ponovo kasnije.');
+    setStatus('Očitavam stavke računa…');
+    const data = await extractWithClaude(pendingBlob);
+    pending = {
+      datum: data.datum, prodavac: data.prodavac,
+      stavke: data.stavke || [], ukupno: data.ukupno
+    };
+    showReview(pending);
+    setStatus('Provjeri stavke i po potrebi ispravi prije spremanja.');
+  } catch (e) {
+    setStatus('Greška: ' + (e.message || e) + ' Možeš unijeti stavke ručno.', true);
+    pending = {datum: null, prodavac: '', stavke: []};
+    showReview(pending);
+  } finally {
+    $('btnProcess').disabled = false;
+  }
+});
+
+$('btnAddItem').addEventListener('click', () => {
+  $('items').appendChild(itemRow());
+  updateTotal();
+});
+
+$('btnDiscard').addEventListener('click', () => {
+  resetReview();
+  setStatus('');
+});
+
+$('btnSave').addEventListener('click', () => {
+  const stavke = readItems();
+  if (!stavke.length) { setStatus('Dodaj bar jednu stavku prije spremanja.', true); return; }
+  const ukupno = stavke.reduce((s, x) => s + x.iznos, 0);
+  receipts.push({
+    id: 'r' + Date.now() + Math.random().toString(36).slice(2, 7),
+    datum: $('rDate').value || todayISO(),
+    prodavac: normName($('rShop').value),
+    stavke,
+    ukupno,
+    uploaded: new Date().toISOString()
+  });
+  saveReceipts();
+  resetReview();
+  setStatus('Račun je spremljen.');
+  renderAll();
+});
+
+$('receiptList').addEventListener('click', e => {
+  const id = e.target.dataset.del;
+  if (!id) return;
+  if (!confirm('Obrisati ovaj račun?')) return;
+  receipts = receipts.filter(r => r.id !== id);
+  saveReceipts();
+  renderAll();
+});
+
+$('btnClearOld').addEventListener('click', () => {
+  const old = receipts.filter(r => !inWindow(r)).length;
+  if (!old) { setStatus('Nema računa starijih od 30 dana.'); return; }
+  if (!confirm('Obrisati ' + old + ' računa starijih od 30 dana?')) return;
+  receipts = receipts.filter(inWindow);
+  saveReceipts();
+  renderAll();
+  setStatus('Obrisano ' + old + ' računa.');
+});
+
+renderAll();
+</script>
+</body>
+</html>
